@@ -1,0 +1,93 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:jdbc="http://www.springframework.org/schema/jdbc"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/beans
+		http://www.springframework.org/schema/beans/spring-beans.xsd
+		http://www.springframework.org/schema/jdbc
+		http://www.springframework.org/schema/jdbc/spring-jdbc.xsd">
+
+    <!-- connect to MySql database -->
+    <!-- password is encrypted, recreated encrypted password with util -->
+    <!-- UAT -->
+	<bean id="dataSourceMysql"
+		class="cl.devweb.security.util.EncryptDataSource">
+		<property name="driverClassName" value="com.mysql.jdbc.Driver" />
+		<!-- autoReconnect=true& -->
+		<property name="url" value="jdbc:mysql://gds-snc1-latam-uat-rw-vip.snc1:3306/clandescuento?useSSL=false&amp;zeroDateTimeBehavior=convertToNull" />
+		<property name="username" value="latam-utils" />
+		<property name="password" value="PFBYw4VDYt1jZYITLoaRSw==" />
+		<property name="suppressClose" value="true" />
+	</bean>
+	<!-- Prod -->
+	<!-- bean id="dataSourceMysql"
+		class="cl.devweb.security.util.EncryptDataSource">
+		<property name="driverClassName" value="com.mysql.jdbc.Driver" />
+		<property name="url" value="jdbc:mysql://localhost:3306/mydb01?useSSL=false" />
+		<property name="username" value="weblogic" />
+		<property name="password" value="NWAB0r52SNhqBBSvgg28Iw==" />
+		<property name="suppressClose" value="true" />
+	</bean -->
+	<!-- local -->
+	<!-- bean id="dataSourceMysql"
+		class="cl.devweb.security.util.EncryptDataSource">
+		<property name="driverClassName" value="com.mysql.jdbc.Driver" />
+		<property name="url" value="jdbc:mysql://localhost:3306/mydb01?useSSL=false" />
+		<property name="username" value="weblogic" />
+		<property name="password" value="NWAB0r52SNhqBBSvgg28Iw==" />
+		<property name="suppressClose" value="true" />
+	</bean -->
+
+
+    <!-- connect to Postgres database -->
+    <!-- password is encrypted, recreated encrypted password with util -->
+    <!-- local -->
+	<bean id="dataSourcePostgres"
+		class="cl.devweb.security.util.EncryptDataSource">
+	    <property name="driverClassName" value="org.postgresql.Driver"/>
+    	<property name="url" value="jdbc:postgresql://localhost:5432/hrdb" />
+		<property name="username" value="hr" />
+		<property name="password" value="vQIIYUW5I6g=" />
+		<property name="suppressClose" value="true" />
+	</bean>
+	<bean id="dataSourcePostgresVM"
+		class="cl.devweb.security.util.EncryptDataSource">
+	    <property name="driverClassName" value="org.postgresql.Driver"/>
+    	<property name="url" value="jdbc:postgresql://10.160.39.50:5432/hrdb" />
+		<property name="username" value="hr" />
+		<property name="password" value="vQIIYUW5I6g=" />
+		<property name="suppressClose" value="true" />
+	</bean>
+        <bean id="dataSourceMysqlLocal"
+		class="cl.devweb.security.util.EncryptDataSource">
+		<property name="driverClassName" value="com.mysql.jdbc.Driver" />
+		<!-- autoReconnect=true& -->
+		<property name="url" value="jdbc:mysql://127.0.0.1:3306/springbatch?useSSL=false&amp;zeroDateTimeBehavior=convertToNull" />
+		<property name="username" value="hr" />
+		<property name="password" value="vQIIYUW5I6g=" />
+		<property name="suppressClose" value="true" />
+	</bean>
+	<!-- bean id="dataSourceH2" class="org.springframework.jdbc.datasource.SingleConnectionDataSource">
+		<property name="driverClassName" value="org.h2.Driver" />
+		<property name="url" value="jdbc:h2:mem:test-db-mem;DB_CLOSE_ON_EXIT=FALSE" />
+		<property name="username" value="hr" />
+		<property name="password" value="hr" />
+		<property name="suppressClose" value="true" />
+	</bean -->
+
+	<!-- create job-meta tables automatically -->
+	<!-- slower -->
+	<!--  jdbc:initialize-database data-source="dataSourceMysql">
+		<jdbc:script location="org/springframework/batch/core/schema-drop-mysql.sql" />
+		<jdbc:script location="org/springframework/batch/core/schema-mysql.sql" />
+	</jdbc:initialize-database-->
+
+	<!-- jdbc:initialize-database data-source="dataSourcePostgres">
+		<jdbc:script location="org/springframework/batch/core/schema-drop-postgresql.sql" />
+		<jdbc:script location="org/springframework/batch/core/schema-postgresql.sql" />
+	</jdbc:initialize-database -->
+
+	<!-- jdbc:initialize-database data-source="dataSourceH2">
+		<jdbc:script location="classpath:/org/springframework/batch/core/schema-h2.sql"/>
+	</jdbc:initialize-database -->
+
+</beans>

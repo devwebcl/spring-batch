@@ -1,0 +1,127 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:batch="http://www.springframework.org/schema/batch" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/batch
+		http://www.springframework.org/schema/batch/spring-batch.xsd
+		http://www.springframework.org/schema/beans
+		http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+	<!-- these could be at command-line job runner class (AppMigration.java) -->
+	<import resource="../config/context.xml" />
+	<import resource="../config/database.xml" />
+
+	<bean id="deal" class="cl.devweb.model.Deal" scope="prototype" />
+
+	<bean id="itemProcessor" class="org.springframework.batch.item.support.CompositeItemProcessor">
+			<property name="delegates">
+			<list>
+				<ref bean="dealMapperProcessor" />
+				<!-- ref bean="dealMapperProcessor2 :)" / -->
+			</list>
+		</property>
+	</bean>
+	<bean id="dealMapperProcessor" class="cl.devweb.CustomItemProcessor">
+		<property name="mapper">
+			<bean class="cl.devweb.model.SimpleDealMapper" />
+		</property>
+	</bean>
+
+
+
+	<batch:job id="migrationJob">
+		<batch:step id="step1" next="step2">
+			<batch:tasklet>
+				<batch:chunk reader="itemReaderMysql"  processor="itemProcessor" writer="postgresItemWriter" commit-interval="2">
+				</batch:chunk>
+			</batch:tasklet>
+				<batch:listeners>
+					<batch:listener ref="dealListener" />
+				</batch:listeners>
+		</batch:step>
+
+		<batch:step id="step2">
+			<batch:tasklet>
+				<batch:chunk reader="itemReaderMysql"  processor="itemProcessor" writer="postgresItemWriter" commit-interval="2">
+				</batch:chunk>
+			</batch:tasklet>
+				<batch:listeners>
+					<batch:listener ref="dealListener" />
+				</batch:listeners>
+		</batch:step>
+
+	</batch:job>
+
+
+	<bean id="dealListener" class="cl.devweb.ModifyExitStatusListener" />
+
+	<!-- Reader - Cursor -->
+	<bean id="itemReaderMysql"
+		class="org.springframework.batch.item.database.JdbcCursorItemReader" scope="step">
+		<property name="dataSource" ref="dataSourceMysql" />
+		<property name="sql" value="SELECT date, brand_id, status, type2 FROM deal_dummy" />
+		<property name="rowMapper">
+			<bean class="cl.devweb.DealRowMapper" />
+		</property>
+	</bean>
+
+  	<!-- Reader - Paging -->
+	  <!-- bean id="pagingItemReader"
+		class="org.springframework.batch.item.database.JdbcPagingItemReader"
+		scope="step">
+		<property name="dataSource" ref="dataSource" />
+		<property name="queryProvider">
+		  <bean
+			class="org.springframework.batch.item.database.support.SqlPagingQueryProviderFactoryBean">
+			<property name="dataSource" ref="dataSourceMysql" />
+			<property name="selectClause" value="SELECT id, date, brand_id, status, type2" />
+			<property name="fromClause" value="FROM deal_dummy" />
+			<property name="whereClause" value="where user_login=:name" />
+			<property name="sortKey" value="id" />
+		  </bean>
+		</property>
+		<property name="parameterValues">
+		   <map>
+			<entry key="name" value="#{jobParameters['name']}" />
+		   </map>
+		</property>
+		<property name="pageSize" value="10" />
+		<property name="rowMapper">
+			<bean class="cl.devweb.DealRowMapper" />
+		</property>
+	  </bean -->
+
+
+	<!-- Writer -->
+   <bean id="postgresItemWriter" class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+		<property name="dataSource" ref="dataSourcePostgres" />
+		<property name="sql">
+		  <value>
+		           <![CDATA[
+		           	INSERT INTO users_billing_history_dummy( ubh_id, ubh_created, ubh_user_id, ubh_payment_provider_id, ubh_chargeback_reason)
+				    VALUES (:ubh_id, :ubh_created, :ubh_user_id, :ubh_payment_provider_id, :ubh_chargeback_reason)
+		           ]]>
+		  </value>
+		</property>
+		<!-- It will take care matching between object property and SQL name parameter -->
+		<property name="itemSqlParameterSourceProvider">
+			<bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider" />
+		</property>
+    </bean>
+
+  <!-- bean id="mysqlItemWriter" class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+		<property name="dataSource" ref="dataSourceMysql" />
+		<property name="sql">
+		  <value>
+		           <![CDATA[
+		           	INSERT INTO users_billing_history( ubh_created, ubh_user_id, ubh_payment_provider_id, ubh_chargeback_reason)
+				    VALUES (:ubh_created, :ubh_user_id, :ubh_payment_provider_id, :ubh_chargeback_reason)
+		           ]]>
+		  </value>
+		</property> -->
+		<!-- It will take care matching between object property and SQL name parameter -->
+		<!--  property name="itemSqlParameterSourceProvider">
+			<bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider" />
+		</property>
+    </bean -->
+
+
+</beans>

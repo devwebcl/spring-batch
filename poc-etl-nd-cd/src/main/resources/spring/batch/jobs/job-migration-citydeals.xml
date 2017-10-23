@@ -1,0 +1,200 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+	xmlns:batch="http://www.springframework.org/schema/batch"
+	xmlns:util="http://www.springframework.org/schema/util"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:schemaLocation="http://www.springframework.org/schema/batch
+		http://www.springframework.org/schema/batch/spring-batch.xsd
+		http://www.springframework.org/schema/beans
+		http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+	<!-- these could be at command-line job runner class (AppMigration.java) -->
+	<import resource="../config/context.xml" />
+	<import resource="../config/database.xml" />
+
+
+	<bean id="testCacheBean" class="cl.devweb.cache.CacheBean" init-method="initialize" scope="singleton"/>
+    <bean id="cityDealsCacheBean" class="cl.devweb.cache.CacheBean" init-method="initialize" scope="singleton"/>
+
+	<batch:job id="migrationCityDealsJob">
+		<batch:step id="step1" > <!-- next="step2" -->
+			<batch:tasklet>
+				<batch:chunk reader="itemReaderCityDealsMysql"  processor="itemCityDealsProcessor" writer="compositeCityDealsWriter"
+							 commit-interval="1" skip-limit="2147483647" >
+                    <batch:skippable-exception-classes>
+                    		<!-- This is the strategy to insert incremental new values, and we skip exceptions for already existing data  -->
+                    		<!-- remove to get fullstacktrace: -->
+                            <batch:include class="org.springframework.dao.DuplicateKeyException"/>
+                            <!-- batch:include class="org.springframework.dao.DataIntegrityViolationException"/ --> <!-- by CURRVAL() -->
+                    </batch:skippable-exception-classes>
+				</batch:chunk>
+			</batch:tasklet>
+				<batch:listeners>
+					<batch:listener ref="exitStatusListener" />
+					<batch:listener ref="skipListener" />
+				</batch:listeners>
+		</batch:step>
+	</batch:job>
+
+
+
+	<bean id="itemCityDealsProcessor" class="org.springframework.batch.item.support.CompositeItemProcessor">
+			<property name="delegates">
+			<list>
+				<ref bean="cityDealsMapperProcessor" />
+			</list>
+		</property>
+	</bean>
+	<bean id="cityDealsMapperProcessor" class="cl.devweb.processor.CustomItemProcessor">
+		<property name="mapper">
+			<bean class="cl.devweb.processor.deal.SimpleCityDealsMapper"/>
+		</property>
+	</bean>
+
+	<bean id="exitStatusListener" class="cl.devweb.listener.ModifyExitStatusListener" />
+    <bean id="skipListener" class="cl.devweb.listener.IncrementalSkipListener" />
+
+
+	<!-- Reader - Cursor -->
+	<bean id="itemReaderCityDealsMysql"
+		class="org.springframework.batch.item.database.JdbcCursorItemReader" scope="step">
+		<property name="dataSource" ref="dataSourceMysql" />
+		<property name="sql">
+		  <value>				<!-- "City Deals" XD -->
+		           <![CDATA[
+
+								SELECT
+									deal.id as 'deal.id',
+									dealExtraData.template_deal_id as 'dealextradata.template_deal_id',
+									deal.parent_deal_id as 'deal.parent_deal_id',
+									deal.title as 'deal.title',
+									deal.salesforce_id as 'deal.salesforce_id',
+									deal.short_title as 'deal.short_title',
+									deal.coupon_title as 'deal.coupon_title',
+									deal.picture as 'deal.picture',
+									deal.slug as 'deal.slug',
+									deal.tipping_point as 'deal.tipping_point',
+									deal.country_id as 'deal.country_id',
+									deal.company_id as 'deal.company_id',
+									deal.city_id as 'deal.city_id',
+									deal.category_id as 'deal.category_id',
+									deal.date as 'deal.date',
+									deal.due_date as 'deal.due_date',
+									deal.expiration_date as 'deal.expiration_date',
+									deal.discount as 'deal.discount',
+									deal.partner_original_price as 'deal.partner_original_price',
+									deal.partner_special_price as 'deal.partner_special_price',
+									deal.max_coupons as 'deal.max_coupons',
+									deal.max_coupons_per_buy as 'deal.max_coupons_per_buy',
+									deal.sold_qty as 'deal.sold_qty',
+									deal.init_coupons as 'deal.init_coupons',
+									deal.stock_management as 'deal.stock_management',
+									deal.status as 'deal.status',
+									deal.deal_type_id as 'deal.deal_type_id',
+									deal.details as 'deal.details',
+									deal.type as 'deal.type',
+									deal.type2 as 'deal.type2',
+									deal.shipping_courier as 'deal.shipping_courier',
+									deal.shipping as 'deal.shipping',
+									deal.highlights as 'deal.highlights',
+									deal.final_price as 'deal.final_price',
+									deal.value as 'deal.value',
+									deal.description as 'deal.description',
+									deal.additional_info as 'deal.additional_info',
+									deal.commission as 'deal.commission',
+									deal.nl_title as 'deal.nl_title',
+									deal.mulligan as 'deal.mulligan',
+									deal.mulligan_days as 'deal.mulligan_days',
+									dealExtraData.id as 'dealextradata.id',
+									dealExtraData.init_coupon_date as 'dealextradata.init_coupon_date',
+									dealExtraData.gender_code as 'dealextradata.gender_code',
+									dealExtraData.template_deal_id as 'dealextradata.template_deal_id',
+									dealExtraData.sharing_stock as 'dealextradata.sharing_stock',
+									dealExtraData.dealbank_status as 'dealextradata.dealbank_status',
+									dealExtraData.business_unit as 'dealextradata.business_unit',
+									dealExtraData.coupon_duration as 'dealextradata.coupon_duration',
+									dealExtraData.payment_offline as 'dealextradata.payment_offline',
+									dealExtraData.modified as 'dealextradata.modified',
+									dealExtraData.created as 'dealextradata.created',
+									city_pivot.n_city_id as 'city_pivot.n_city_id',
+									city_pivot.cd_city_id as 'city_pivot.cd_city_id',
+									city_pivot.cd_appdomain_id as 'city_pivot.cd_appdomain_id',
+									merchants_pivot.n_company_id as 'merchants_pivot.n_company_id',
+
+									dealTags.id as 'dealTags.id',
+									tag.id as 'tag.id',
+									tag.name as 'tag.name',
+									tag.description as 'tag.description',
+									tag.type as 'tag.type',
+									tag.image as 'tag.image'
+
+								FROM clandescuento.deals deal
+									LEFT OUTER JOIN clandescuento.deals_extra_data dealExtraData	ON deal.id = dealExtraData.deal_id
+									INNER JOIN clandescuento.cities_pivot city_pivot ON city_pivot.n_city_id = deal.city_id
+									LEFT OUTER JOIN clandescuento.merchants_pivot merchants_pivot ON merchants_pivot.n_company_id = deal.company_id
+									INNER JOIN clandescuento.deal_tags dealTags ON dealTags.deal_id = deal.id
+									INNER JOIN clandescuento.tags tag ON dealTags.tag_id = tag.id
+
+								WHERE
+									deal.type <> 'HIDDEN' AND deal.type <> 'TEMPLATE' AND
+									deal.type <> 'WELCOME' AND deal.type <> 'FLASH' AND
+									deal.type <> 'TEASER' AND deal.type <> '0' AND
+									city_pivot.n_location_id=0
+
+								GROUP BY deal.id
+
+								#{systemProperties.limit}
+
+		           ]]>
+		  </value>
+		</property>
+		<property name="rowMapper">
+			<bean class="cl.devweb.mapper.reader.deal.CityDealsRowReader" />
+		</property>
+	</bean>
+
+
+
+	<!-- Writer -->
+   <bean id="compositeCityDealsWriter" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="dealLimitGroupWriter"/>
+                <ref bean="cdDealUuidWriter"/>
+                <ref bean="insertDealTemplatePurchaseControlWriter"/>
+                <ref bean="insertDealPurchaseControlWriter"/>
+                <ref bean="cityDealsWriter"/>
+                <ref bean="insertCityDealsPivotWriter"/>
+            </list>
+        </property>
+    </bean>
+
+	<!-- Custom Writers -->
+    <bean id="dealLimitGroupWriter" class="cl.devweb.writer.DealLimitGroupWriter">
+        <property name="dataSource" ref="dataSourcePostgres"/>
+        <property name="cacheBean"  ref="cityDealsCacheBean" />
+    </bean>
+    <bean id="cdDealUuidWriter" class="cl.devweb.writer.CdDealUuidWriter">
+        <property name="dataSource" ref="dataSourcePostgres"/>
+        <property name="cacheBean"  ref="cityDealsCacheBean" />
+    </bean>
+
+    <bean id="insertDealTemplatePurchaseControlWriter" class="cl.devweb.writer.DealTemplatePurchaseControlWriter">
+        <property name="dataSource" ref="dataSourcePostgres"/>
+        <property name="cacheBean"  ref="cityDealsCacheBean" />
+    </bean>
+    <bean id="insertDealPurchaseControlWriter" class="cl.devweb.writer.DealPurchaseControlWriter">
+        <property name="dataSource" ref="dataSourcePostgres"/>
+        <property name="cacheBean"  ref="cityDealsCacheBean" />
+    </bean>
+
+    <bean id="cityDealsWriter" class="cl.devweb.writer.CityDealsWriter">
+        <property name="dataSource" ref="dataSourcePostgres"/>
+        <property name="cacheBean"  ref="cityDealsCacheBean" />
+    </bean>
+    <bean id="insertCityDealsPivotWriter" class="cl.devweb.writer.CityDealsPivotWriter">
+        <property name="dataSource" ref="dataSourceMysql"/>
+        <property name="cacheBean"  ref="cityDealsCacheBean" />
+    </bean>
+
+
+</beans>

@@ -1,0 +1,14 @@
+.classpath
+.project
+.settings/
+bin
+*.class
+target/
+*.iml
+*.ipr
+*.iws
+
+src/main/resources/migration.properties
+nb-configuration.xml
+.DS_Store
+nbactions.xml

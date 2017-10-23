@@ -1,0 +1,268 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:batch="http://www.springframework.org/schema/batch"
+       xmlns:util="http://www.springframework.org/schema/util"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/batch
+		http://www.springframework.org/schema/batch/spring-batch.xsd
+		http://www.springframework.org/schema/beans
+		http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <!-- these could be at command-line job runner class (AppMigration.java) -->
+    <import resource="../config/context.xml" />
+    <import resource="../config/database.xml" />
+
+    <batch:job id="cityJob">
+        <batch:step id="step1" next="step2">
+            <batch:tasklet>
+                <batch:chunk reader="locationReader"  processor="cityProcessor" writer="compositeCityWriter"
+                			 commit-interval="1" skip-limit="2147483647" >
+                    <batch:skippable-exception-classes>
+                            <batch:include class="org.springframework.dao.DuplicateKeyException"/>
+                            <batch:include class="org.springframework.dao.DataIntegrityViolationException"/>
+                    </batch:skippable-exception-classes>
+                </batch:chunk>
+            </batch:tasklet>
+            <batch:listeners>
+                <batch:listener ref="exitStatusListener" />
+                <batch:listener ref="skipListener" />
+            </batch:listeners>
+        </batch:step>
+        <batch:step id="step2" next="step3">
+            <batch:tasklet>
+                <batch:chunk reader="cdParticipantCitiesReader"  processor="participantCitiesToCityPivotProcessor" writer="cdParticipantCitiesIdWriter"
+                             commit-interval="1" skip-limit="2147483647" >
+                    <batch:skippable-exception-classes>
+                        <batch:include class="org.springframework.dao.DuplicateKeyException"/>
+                        <batch:include class="org.springframework.dao.DataIntegrityViolationException"/>
+                        <batch:include class="org.springframework.dao.EmptyResultDataAccessException"/>
+                    </batch:skippable-exception-classes>
+                </batch:chunk>
+            </batch:tasklet>
+            <batch:listeners>
+                <batch:listener ref="exitStatusListener" />
+                <batch:listener ref="skipListener" />
+            </batch:listeners>
+        </batch:step>
+        <!-- Next step we need to fix corrupt data in clandescuento devwebish db. i.e: users-jobs needs it -->
+        <batch:step id="step3" >
+            <batch:tasklet>
+                <batch:chunk reader="cityPivotReader"  processor="cityPivotToCityPivotProcessor" writer="cityPivotWriter"
+                             commit-interval="1" skip-limit="2147483647" >
+                    <batch:skippable-exception-classes>
+                        <batch:include class="org.springframework.dao.DuplicateKeyException"/>
+                        <batch:include class="org.springframework.dao.DataIntegrityViolationException"/>
+                        <batch:include class="org.springframework.dao.EmptyResultDataAccessException"/>
+                    </batch:skippable-exception-classes>
+                </batch:chunk>
+            </batch:tasklet>
+            <batch:listeners>
+                <batch:listener ref="exitStatusListener" />
+                <batch:listener ref="skipListener" />
+            </batch:listeners>
+        </batch:step>
+
+    </batch:job>
+
+    <bean id="exitStatusListener" class="cl.devweb.listener.ModifyExitStatusListener" />
+    <bean id="skipListener" class="cl.devweb.listener.IncrementalSkipListener" />
+
+    <bean id="locationReader"
+          class="org.springframework.batch.item.database.JdbcCursorItemReader" scope="step">
+        <property name="dataSource" ref="dataSourceMysql" />
+        <property name="sql">
+            <value>
+                <![CDATA[
+                    SELECT
+                        city.id,
+                        city.country_id,
+                        city.slug,
+                        city.name,
+                        city.lat,
+                        city.lng,
+                        location.id,
+                        location.slug,
+                        location.name,
+                        location.lat,
+                        location.lng
+                    FROM clandescuento.cities city
+                    LEFT OUTER JOIN clandescuento.locations location
+                    ON location.city_id = city.id
+                    WHERE city.country_id in (#{systemProperties.countries})
+                    ORDER BY city.country_id ASC
+                ]]>
+            </value>
+        </property>
+        <property name="rowMapper">
+            <bean class="cl.devweb.mapper.reader.location.LocationRowMapper" />
+        </property>
+    </bean>
+
+
+    <bean id="cityPivotReader"
+          class="org.springframework.batch.item.database.JdbcCursorItemReader" scope="step">
+        <property name="dataSource" ref="dataSourceMysql" />
+        <property name="sql">
+            <value>
+                <![CDATA[
+                        SELECT
+                            *
+                        FROM clandescuento.cities_pivot
+                        WHERE
+                            (n_city_id = 57 AND n_location_id = 358)
+                                OR
+                            (n_city_id = 1 AND n_location_id = 72)
+		           ]]>
+            </value>
+        </property>
+        <property name="rowMapper">
+            <bean class="cl.devweb.mapper.reader.location.CityPivotRowMapper" />
+        </property>
+    </bean>
+
+    <bean id="cdParticipantCitiesReader"
+          class="org.springframework.batch.item.database.JdbcCursorItemReader" scope="step">
+        <property name="dataSource" ref="dataSourcePostgres" />
+        <property name="sql">
+            <value>
+                <![CDATA[
+                    SELECT
+                        ptc.ptc_id,
+                        ptc.ptc_guid
+                    FROM std_data.participant_cities ptc
+                    WHERE ptc.ptc_appdomain IN (#{systemProperties.appDomains})
+		        ]]>
+            </value>
+        </property>
+        <property name="rowMapper">
+            <bean class="cl.devweb.mapper.reader.location.ParticipantCityRowMapper" />
+        </property>
+    </bean>
+
+    <bean id="cityProcessor" class="cl.devweb.processor.location.CityProcessor"/>
+
+    <bean id="participantCitiesToCityPivotProcessor" class="cl.devweb.processor.location.ParticipantCitiesToCityPivotProcessor"/>
+
+    <bean id="cityPivotToCityPivotProcessor" class="cl.devweb.processor.location.CityPivotToCityPivotProcessor"/>
+
+    <!-- Writer -->
+    <bean id="compositeCityWriter" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="cityPivotWriter"/>
+                <ref bean="participantCitiesWriter"/>
+            </list>
+        </property>
+    </bean>
+
+
+    <bean id="cityPivotWriter" class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+        <property name="dataSource" ref="dataSourceMysql" />
+        <property name="sql">
+            <value>
+                <![CDATA[
+                    INSERT INTO clandescuento.cities_pivot(
+                        n_city_id,
+                        n_location_id,
+                        n_latitude,
+                        n_longitude,
+                        n_slug,
+                        n_name,
+                        n_country_id,
+                        cd_appdomain_id,
+                        cd_city_uuid,
+                        cd_city_id
+                    )
+                    VALUES (
+                        :cityPivot.n_city_id,
+                        :cityPivot.n_location_id,
+                        :cityPivot.n_latitude,
+                        :cityPivot.n_longitude,
+                        :cityPivot.n_slug,
+                        :cityPivot.n_name,
+                        :cityPivot.n_country_id,
+                        :cityPivot.cd_appdomain_id,
+                        :cityPivot.cd_city_uuid,
+                        :cityPivot.cd_city_id
+                    )
+                ]]>
+            </value>
+        </property>
+        <!-- It will take care matching between object property and SQL name parameter -->
+        <property name="itemSqlParameterSourceProvider">
+            <bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider" />
+        </property>
+    </bean>
+
+    <bean id="participantCitiesWriter" class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+        <property name="dataSource" ref="dataSourcePostgres" />
+        <property name="sql">
+            <value>
+                <![CDATA[
+                    INSERT INTO std_data.participant_cities(
+                        ptc_id,
+                        ptc_city_name,
+                        ptc_appdomain,
+                        ptc_status,
+                        ptc_city_url_name,
+                        ptc_latitude,
+                        ptc_longitude,
+                        ptc_top_city,
+                        ptc_locale,
+                        ptc_timezone,
+                        ptc_is_nationwide_mapped,
+                        ptc_devweb_now_enabled,
+                        ptc_is_deal_bank,
+                        ptc_is_smartdeals_enabled,
+                        ptc_external_city_deal_url_enabled,
+                        ptc_guid,
+                        ptc_parent_city,
+                        ptc_city_group_id
+                    )
+                    VALUES (
+                        NEXTVAL('std_data.participant_cities_ptc_id_seq'),
+                        :participantCities.ptc_city_name,
+                        :participantCities.ptc_appdomain,
+                        :participantCities.ptc_status,
+                        :participantCities.ptc_city_url_name,
+                        :participantCities.ptc_latitude,
+                        :participantCities.ptc_longitude,
+                        :participantCities.ptc_top_city,
+                        :participantCities.ptc_locale,
+                        :participantCities.ptc_timezone,
+                        :participantCities.ptc_is_nationwide_mapped,
+                        :participantCities.ptc_devweb_now_enabled,
+                        :participantCities.ptc_is_deal_bank,
+                        :participantCities.ptc_is_smartdeals_enabled,
+                        :participantCities.ptc_external_city_deal_url_enabled,
+                        :participantCities.ptc_guid,
+                        CURRVAL('std_data.participant_cities_ptc_id_seq'),
+                        CURRVAL('std_data.participant_cities_ptc_id_seq')
+                    )
+                ]]>
+            </value>
+        </property>
+        <!-- It will take care matching between object property and SQL name parameter -->
+        <property name="itemSqlParameterSourceProvider">
+            <bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider" />
+        </property>
+    </bean>
+
+    <bean id="cdParticipantCitiesIdWriter" class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+        <property name="dataSource" ref="dataSourceMysql" />
+        <property name="sql">
+            <value>
+                <![CDATA[
+                    UPDATE clandescuento.cities_pivot
+                    SET cd_city_id = :cd_city_id
+                    WHERE cd_city_id IS NULL AND cd_city_uuid = :cd_city_uuid
+                ]]>
+            </value>
+        </property>
+        <!-- It will take care matching between object property and SQL name parameter -->
+        <property name="itemSqlParameterSourceProvider">
+            <bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider" />
+        </property>
+    </bean>
+
+
+</beans>

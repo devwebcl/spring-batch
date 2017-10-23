@@ -1,0 +1,498 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:batch="http://www.springframework.org/schema/batch"
+       xmlns:util="http://www.springframework.org/schema/util"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/batch
+		http://www.springframework.org/schema/batch/spring-batch.xsd
+		http://www.springframework.org/schema/beans
+		http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <!-- these could be at command-line job runner class (AppMigration.java) -->
+    <import resource="../config/context.xml" />
+    <import resource="../config/database.xml" />
+
+    <bean id="deal" class="cl.devweb.model.devwebish.Deal" scope="prototype" />
+
+    <bean id="itemProcessor" class="org.springframework.batch.item.support.CompositeItemProcessor">
+        <property name="delegates">
+            <list>
+                <ref bean="orderMapperProcessor" />
+                <!-- ref bean="billAttrMapperProcessor" /-->
+            </list>
+        </property>
+    </bean>
+    <bean id="orderMapperProcessor" class="cl.devweb.processor.CustomItemProcessor">
+        <property name="mapper">
+            <bean class="cl.devweb.processor.order.SimpleOrderMapper" />
+        </property>
+    </bean>
+
+    <batch:job id="migrationJob">
+        <batch:step id="step1" > <!-- next="step2" -->
+            <batch:tasklet>
+                <batch:chunk reader="itemReaderMysql"  processor="itemProcessor" writer="productItemWriter"
+                             commit-interval="1" skip-limit="2147483647" >
+                    <batch:skippable-exception-classes>
+                        <!-- This is the strategy to insert incremental new values, and we skip exceptions for already existing data  -->
+                        <!-- remove to get fullstacktrace: -->
+                        <batch:include class="org.springframework.dao.DuplicateKeyException"/>
+                        <batch:include class="org.springframework.dao.DataIntegrityViolationException"/> <!-- by CURRVAL() -->
+                    </batch:skippable-exception-classes>
+                </batch:chunk>
+            </batch:tasklet>
+            <batch:listeners>
+                <batch:listener ref="exitStatusListener" />
+                <batch:listener ref="skipListener" />
+            </batch:listeners>
+        </batch:step>
+    </batch:job>
+
+
+    <bean id="exitStatusListener" class="cl.devweb.listener.ModifyExitStatusListener" />
+    <bean id="skipListener" class="cl.devweb.listener.IncrementalSkipListener" />
+
+    <!-- Reader - Cursor -->
+    <bean id="itemReaderMysql"
+          class="org.springframework.batch.item.database.JdbcCursorItemReader" scope="step">
+        <property name="dataSource" ref="dataSourceMysql" />
+        <property name="sql">
+            <value>
+            <![CDATA[
+            SELECT
+                Payment.id as 'payment.id',
+                Payment.user_id as 'payment.user_id',
+                Payment.deal_id as 'payment.deal_id',
+                Payment.status as 'payment.status',
+                Payment.created as 'payment.created',
+                Payment.modified as 'payment.modified',
+                Payment.description as 'payment.description',
+                Payment.expires as 'payment.expires',
+                Payment.currency_id as 'payment.currency_id',
+                Payment.currency_code as 'payment.currency_code',
+                Payment.payment_type as 'payment.payment_type',
+                Payment.stock_id as 'payment.stock_id',
+                Payment.hash as 'payment.hash',
+                Payment.amount as 'payment.amount',
+                Payment.credits as 'payment.credits',
+                Payment.final_response as 'payment.final_response',
+                Payment.last_status as 'payment.last_status',
+                Payment.ended as 'payment.ended',
+                Payment.server as 'payment.server',
+                Payment.source as 'payment.source',
+                Payment.atrk as 'payment.atrk',
+                Payment.tbkinfo_imported as 'payment.tbkinfo_imported',
+                Payment.lanpass_id as 'payment.lanpass_id',
+                Payment.ip_address as 'payment.ip_address',
+                UserPivot.id as 'userpivot.id',
+                UserPivot.n_user_id as 'userpivot.n_user_id',
+                UserPivot.n_country_id as 'userpivot.n_country_id',
+                UserPivot.email as 'userpivot.email',
+                UserPivot.uuid as 'userpivot.uuid',
+                UserPivot.n_company_id as 'userpivot.n_company_id',
+                UserPivot.cd_user_id as 'userpivot.cd_user_id',
+                UserPivot.cd_appdomain_id as 'userpivot.cd_appdomain_id',
+                UserPivot.city_pivot_id as 'userpivot.city_pivot_id',
+                Deal.id as 'deal.id',
+                Deal.salesforce_id as 'deal.salesforce_id',
+                Deal.short_title as 'deal.short_title',
+                Deal.coupon_title as 'deal.coupon_title',
+                Deal.picture as 'deal.picture',
+                Deal.tipping_point as 'deal.tipping_point',
+                Deal.country_id as 'deal.country_id',
+                Deal.company_id as 'deal.company_id',
+                Deal.city_id as 'deal.city_id',
+                Deal.category_id as 'deal.category_id',
+                Deal.date as 'deal.date',
+                Deal.due_date as 'deal.due_date',
+                Deal.expiration_date as 'deal.expiration_date',
+                Deal.partner_original_price as 'deal.partner_original_price',
+                Deal.partner_special_price as 'deal.partner_special_price',
+                Deal.parent_deal_id as 'deal.parent_deal_id',
+                Deal.max_coupons as 'deal.max_coupons',
+                Deal.max_coupons_per_buy as 'deal.max_coupons_per_buy',
+                Deal.sold_qty as 'deal.sold_qty',
+                Deal.init_coupons as 'deal.init_coupons',
+                Deal.stock_management as 'deal.stock_management',
+                Deal.deal_type_id as 'deal.deal_type_id',
+                Deal.status as 'deal.status',
+                Deal.type as 'deal.type',
+                Deal.type2 as 'deal.type2',
+                Deal.shipping_courier as 'deal.shipping_courier',
+                Deal.final_price as 'deal.final_price',
+                Deal.additional_info as 'deal.additional_info',
+                Deal.nl_title as 'deal.nl_title',
+                Deal.commission_tax as 'commission_tax',
+                CityDealPivot.cd_id as 'citydealpivot.cd_id',
+                DealExtraData.id as 'dealextradata.id',
+                DealExtraData.init_coupon_date as 'dealextradata.init_coupon_date',
+                DealExtraData.gender_code as 'dealextradata.gender_code',
+                DealExtraData.template_deal_id as 'dealextradata.template_deal_id',
+                DealExtraData.sharing_stock as 'dealextradata.sharing_stock',
+                DealExtraData.dealbank_status as 'dealextradata.dealbank_status',
+                DealExtraData.business_unit as 'dealextradata.business_unit',
+                DealExtraData.coupon_duration as 'dealextradata.coupon_duration',
+                Country.id as 'country.id',
+                Country.name as 'country.name',
+                Country.slug as 'country.slug',
+                Country.code as 'country.code',
+                Country.url as 'country.url',
+                Country.default_slug as 'country.default_slug',
+                Country.facebook_id as 'country.facebook_id',
+                Country.facebook_path as 'country.facebook_path',
+                Country.twitter_id as 'country.twitter_id',
+                Country.phone_country as 'country.phone_country',
+                Country.active as 'country.active',
+                Country.analytics as 'country.analytics',
+                Country.support_address as 'country.support_address',
+                Country.address as 'country.address',
+                Country.tz as 'country.tz',
+                Country.conversion as 'country.conversion',
+                Country.rewards as 'country.rewards',
+                Country.scheduler_url as 'country.scheduler_url',
+                PaymentIncentive.id as 'paymentincentive.id',
+                PaymentIncentive.payment_id as 'paymentincentive.payment_id',
+                PaymentIncentive.coupon_id as 'paymentincentive.coupon_id',
+                PaymentIncentive.amount as 'paymentincentive.amount',
+                PaymentIncentive.incentive_id as 'paymentincentive.incentive_id',
+                TrackingPayment.id as 'trackingpayments.id',
+                TrackingPayment.version as 'trackingpayments.version',
+                TrackingPayment.payment_id as 'trackingpayments.payment_id',
+                TrackingPayment.payment_method as 'trackingpayments.payment_method',
+                TrackingPayment.platform as 'trackingpayments.platform',
+                TrackingPayment.application as 'trackingpayments.application',
+                TrackingPayment.user_agent as 'trackingpayments.user_agent',
+                TrackingPayment.cookie_b as 'trackingpayments.cookie_b',
+                TrackingPayment.date as 'trackingpayments.date',
+                Coupon.id as 'coupon.id',
+                Coupon.code as 'coupon.code',
+                Coupon.deal_id as 'coupon.deal_id',
+                Coupon.payment_id as 'coupon.payment_id',
+                Coupon.user_id as 'coupon.user_id',
+                Coupon.validation_code as 'coupon.validation_code',
+                Coupon.created as 'coupon.created',
+                Coupon.status as 'coupon.status',
+                Coupon.status2 as 'coupon.status2',
+                Coupon.check_name as 'coupon.check_name',
+                Coupon.check_email as 'coupon.check_email',
+                Coupon.check_rut as 'coupon.check_rut',
+                Coupon.check_text as 'coupon.check_text',
+                Coupon.check_date as 'coupon.check_date',
+                Coupon.gift_message as 'coupon.gift_message',
+                Coupon.gift_from as 'coupon.gift_from',
+                Coupon.gift_to as 'coupon.gift_to',
+                Coupon.gift_email as 'coupon.gift_email',
+                Coupon.sent_ok as 'coupon.sent_ok',
+                Coupon.invalidation_note as 'coupon.invalidation_note',
+                Coupon.refund_date as 'coupon.refund_date',
+                CouponInvalidationReason.global_code as 'couponinvalidationreason.global_code'
+
+            FROM clandescuento.payments Payment
+                INNER JOIN clandescuento.coupons Coupon ON Payment.id = Coupon.payment_id
+                INNER JOIN clandescuento.users_pivot UserPivot ON Payment.user_id = UserPivot.n_user_id
+                INNER JOIN clandescuento.deals Deal ON Payment.deal_id = Deal.id
+                INNER JOIN clandescuento.city_deals_pivot CityDealPivot ON CityDealPivot.nd_deals_id = Deal.id
+                INNER JOIN clandescuento.deals_extra_data DealExtraData ON Payment.deal_id = DealExtraData.deal_id
+                INNER JOIN clandescuento.countries Country ON Deal.country_id = Country.id
+                LEFT OUTER JOIN clandescuento.payments_incentives PaymentIncentive ON Payment.id = PaymentIncentive.payment_id
+                LEFT OUTER JOIN clandescuento.tracking_payments TrackingPayment ON Payment.id = TrackingPayment.payment_id
+                LEFT OUTER JOIN admindevweb.coupon_invalidation_reasons CouponInvalidationReason ON Coupon.invalidation_reason_id = CouponInvalidationReason.id
+
+                -- retrieve populated TrackingPayments fields
+                -- ORDER BY Payment.created DESC
+                -- we can see if it exists PK (payment)
+            WHERE
+                Coupon.status NOT IN ('NEW', 'NEW2')
+                AND Deal.country_id IN (#{systemProperties.countries})
+
+            ORDER BY Payment.id ASC
+            -- amount of Coupons !
+            #{systemProperties.limit}
+            ]]>
+            </value>
+        </property>
+        <property name="rowMapper">
+            <bean class="cl.devweb.mapper.reader.order.OrderRowMapper" />
+        </property>
+    </bean>
+
+    <bean id="productItemWriter" class="org.springframework.batch.item.support.ClassifierCompositeItemWriter">
+        <property name="classifier">
+            <bean class="org.springframework.classify.BackToBackPatternClassifier">
+                <property name="routerDelegate">
+                    <bean class="cl.devweb.classifier.WriterRouterClassifierOrder" />
+                </property>
+                <property name="matcherMap">
+                    <map>
+                        <entry key="INSERT_UBH_UJD_BA_BI_RR" value-ref="UBH-UJD-BA-BI-RR-Writer" />
+                        <entry key="INSERT_UBH_UJD_BA_BI" value-ref="UBH-UJD-BA-BI-Writer" />
+                        <entry key="INSERT_UBH_UJD_BA_RR" value-ref="UBH-UJD-BA-RR-Writer" />
+                        <entry key="INSERT_UBH_UJD_BA" value-ref="UBH-UJD-BA-Writer" />
+                        <entry key="INSERT_UBH_UJD_BI_RR" value-ref="UBH-UJD-BI-RR-Writer" />
+                        <entry key="INSERT_UBH_UJD_BI" value-ref="UBH-UJD-BI-Writer" />
+                        <entry key="INSERT_UBH_UJD_RR" value-ref="UBH-UJD-RR-Writer" />
+                        <entry key="INSERT_UBH_UJD" value-ref="UBH-UJD-Writer" />
+                        <entry key="INSERT_UJD_BA_BI_RR" value-ref="UJD-BA-BI-RR-Writer" />
+                        <entry key="INSERT_UJD_BA_BI" value-ref="UJD-BA-BI-Writer" />
+                        <entry key="INSERT_UJD_BA_RR" value-ref="UJD-BA-RR-Writer" />
+                        <entry key="INSERT_UJD_BA" value-ref="UJD-BA-Writer" />
+                        <entry key="INSERT_UJD_BI_RR" value-ref="UJD-BI-RR-Writer" />
+                        <entry key="INSERT_UJD_BI" value-ref="UJD-BI-Writer" />
+                        <entry key="INSERT_UJD_RR" value-ref="UJD-RR-Writer" />
+                        <entry key="INSERT_UJD" value-ref="UJD-Writer" />
+                    </map>
+                </property>
+            </bean>
+        </property>
+    </bean>
+
+
+    <!-- Writer -->
+    <bean id="UBH-UJD-BA-BI-RR-Writer" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUsersBillingHistoryWriter" />
+                <ref bean="insertUserJoinedDealsWriter" />
+                <ref bean="insertBillingAttrWriter" />
+                <ref bean="insertBillingIncWriter" />
+                <ref bean="insertRefundReasonWriter" />
+            </list>
+        </property>
+    </bean>
+    <bean id="UBH-UJD-BA-BI-Writer" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUsersBillingHistoryWriter" />
+                <ref bean="insertUserJoinedDealsWriter" />
+                <ref bean="insertBillingAttrWriter" />
+                <ref bean="insertBillingIncWriter" />
+            </list>
+        </property>
+    </bean>
+    <bean id="UBH-UJD-BA-RR-Writer" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUsersBillingHistoryWriter" />
+                <ref bean="insertUserJoinedDealsWriter" />
+                <ref bean="insertBillingAttrWriter" />
+                <ref bean="insertRefundReasonWriter" />
+            </list>
+        </property>
+    </bean>
+    <bean id="UBH-UJD-BA-Writer" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUsersBillingHistoryWriter" />
+                <ref bean="insertUserJoinedDealsWriter" />
+                <ref bean="insertBillingAttrWriter" />
+            </list>
+        </property>
+    </bean>
+     <bean id="UBH-UJD-BI-RR-Writer" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUsersBillingHistoryWriter" />
+                <ref bean="insertUserJoinedDealsWriter" />
+                <ref bean="insertBillingIncWriter" />
+                <ref bean="insertRefundReasonWriter" />
+            </list>
+        </property>
+    </bean>
+    <bean id="UBH-UJD-BI-Writer" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUsersBillingHistoryWriter" />
+                <ref bean="insertUserJoinedDealsWriter" />
+                <ref bean="insertBillingIncWriter" />
+            </list>
+        </property>
+    </bean>
+    <bean id="UBH-UJD-RR-Writer" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUsersBillingHistoryWriter" />
+                <ref bean="insertUserJoinedDealsWriter" />
+                <ref bean="insertRefundReasonWriter" />
+            </list>
+        </property>
+    </bean>
+    <bean id="UBH-UJD-Writer" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUsersBillingHistoryWriter" />
+                <ref bean="insertUserJoinedDealsWriter" />
+            </list>
+        </property>
+    </bean>
+    <bean id="UJD-BA-BI-RR-Writer" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUserJoinedDealsWriter" />
+                <ref bean="insertBillingAttrWriter" />
+                <ref bean="insertBillingIncWriter" />
+                <ref bean="insertRefundReasonWriter" />
+            </list>
+        </property>
+    </bean>
+    <bean id="UJD-BA-BI-Writer" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUserJoinedDealsWriter" />
+                <ref bean="insertBillingAttrWriter" />
+                <ref bean="insertBillingIncWriter" />
+            </list>
+        </property>
+    </bean>
+    <bean id="UJD-BA-RR-Writer" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUserJoinedDealsWriter" />
+                <ref bean="insertBillingAttrWriter" />
+                <ref bean="insertRefundReasonWriter" />
+            </list>
+        </property>
+    </bean>
+    <bean id="UJD-BA-Writer" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUserJoinedDealsWriter" />
+                <ref bean="insertBillingAttrWriter" />
+            </list>
+        </property>
+    </bean>
+    <bean id="UJD-BI-RR-Writer" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUserJoinedDealsWriter" />
+                <ref bean="insertBillingIncWriter" />
+                <ref bean="insertRefundReasonWriter" />
+            </list>
+        </property>
+    </bean>
+    <bean id="UJD-BI-Writer" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUserJoinedDealsWriter" />
+                <ref bean="insertBillingIncWriter" />
+            </list>
+        </property>
+    </bean>
+    <bean id="UJD-RR-Writer" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUserJoinedDealsWriter" />
+                <ref bean="insertRefundReasonWriter" />
+            </list>
+        </property>
+    </bean>
+    <bean id="UJD-Writer" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUserJoinedDealsWriter" />
+            </list>
+        </property>
+    </bean>
+
+    <bean id="insertUsersBillingHistoryWriter" class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+        <property name="dataSource" ref="dataSourcePostgres" />
+        <property name="sql">
+            <value>
+                <![CDATA[
+                INSERT INTO std_data.users_billing_history(ubh_id, ubh_created, ubh_user_id, ubh_payment_provider_id, ubh_transaction_state_id,
+                    ubh_price_amount_gross, ubh_tax_amount, ubh_citydeal_id, ubh_basket_items, ubh_paymentprovider_reference, ubh_last_modfied,
+                    ubh_chargeback_reason, ubh_used_reward_units, ubh_modification_reason, ubh_ocd_id, ubh_notification_status, ubh_installment_no,
+                    ubh_interest_amount, ubh_uuid)
+                VALUES (NEXTVAL('std_data.users_billing_history_ubh_id_seq'), :ubh.ubh_created, :ubh.ubh_user_id, :ubh.ubh_payment_provider_id,
+                    :ubh.ubh_transaction_state_id, :ubh.ubh_price_amount_gross,
+                    :ubh.ubh_tax_amount, :ubh.ubh_citydeal_id, :ubh.ubh_basket_items, :ubh.ubh_paymentprovider_reference, :ubh.ubh_last_modfied,
+                    :ubh.ubh_chargeback_reason, :ubh.ubh_used_reward_units, :ubh.ubh_modification_reason, :ubh.ubh_ocd_id, :ubh.ubh_notification_status,
+                    :ubh.ubh_installment_no, :ubh.ubh_interest_amount, :ubh.ubh_uuid)
+                ]]>
+
+            </value>
+        </property>
+        <!-- It will take care matching between object property and SQL name parameter -->
+        <property name="itemSqlParameterSourceProvider">
+            <bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider" />
+        </property>
+    </bean>
+    <bean id="insertBillingAttrWriter" class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+        <property name="dataSource" ref="dataSourcePostgres" />
+        <property name="sql">
+            <value>               <!-- getting from sequence :ba.ba_id -->
+                <![CDATA[
+                INSERT INTO std_data.billing_attribute( ba_id, ba_created, ba_last_modified, ba_ubh_id, ba_attribute, ba_value)
+                VALUES ( NEXTVAL('std_data.billing_attribute_ba_id_seq'), :ba.ba_created, :ba.ba_last_modified, CURRVAL('std_data.users_billing_history_ubh_id_seq'),
+                    :ba.ba_attribute_useragent, :ba.ba_value_useragent) ,
+                    ( NEXTVAL('std_data.billing_attribute_ba_id_seq'), :ba.ba_created, :ba.ba_last_modified, CURRVAL('std_data.users_billing_history_ubh_id_seq'),
+                    :ba.ba_attribute_clienttype, :ba.ba_value_clienttype)
+                ]]>
+            </value>
+        </property>
+        <!-- It will take care matching between object property and SQL name parameter -->
+        <property name="itemSqlParameterSourceProvider">
+            <bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider" />
+        </property>
+    </bean>
+    <bean id="insertUserJoinedDealsWriter" class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+        <property name="dataSource" ref="dataSourcePostgres" />
+        <property name="sql">
+            <value>
+                <![CDATA[
+                INSERT INTO std_data.users_joined_deals(ujd_id, ujd_user_id, ujd_city_deal_id, ujd_created,
+                    ujd_billing_history_id, ujd_join_status, ujd_amount, ujd_part1_provider_only,
+                    ujd_part2_provider_customer, ujd_last_modified, ujd_usage_date, ujd_usage_state,
+                    ujd_redeem_origin, ujd_suspended, ujd_app_id, ujd_valid_from, ujd_valid_until, ujd_guid)
+
+                VALUES (NEXTVAL('std_data.users_joined_deals_ujd_id_seq'), :ujd.ujd_user_id, :ujd.ujd_city_deal_id, :ujd.ujd_created,
+                    CURRVAL('std_data.users_billing_history_ubh_id_seq'), :ujd.ujd_join_status, :ujd.ujd_amount, :ujd.ujd_part1_provider_only,
+                    :ujd.ujd_part2_provider_customer, :ujd.ujd_last_modified, :ujd.ujd_usage_date, :ujd.ujd_usage_state,
+                    :ujd.ujd_redeem_origin, :ujd.ujd_suspended, :ujd.ujd_app_id, :ujd.ujd_valid_from, :ujd.ujd_valid_until, :ujd.ujd_guid)
+                ]]>
+            </value>
+        </property>
+        <!-- It will take care matching between object property and SQL name parameter -->
+        <property name="itemSqlParameterSourceProvider">
+            <bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider" />
+        </property>
+        <!-- TODO: it can be faster if we use our own setter (instead of Java reflection) -->
+        <!-- property name="itemPreparedStatementSetter" ref="preparedStatementSetter"/ -->
+    </bean>
+    <bean id="insertBillingIncWriter" class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+        <property name="dataSource" ref="dataSourcePostgres" />
+        <property name="sql">
+            <value>
+                <!-- getting from sequence :bi.bi_id -->
+                <![CDATA[
+                INSERT INTO std_data.billing_incentive( bi_id, bi_created, bi_last_modified, bi_ubh_id, bi_incentive_id, bi_amount)
+                VALUES ( NEXTVAL('std_data.billing_incentive_bi_id_seq'), :bi.bi_created, :bi.bi_last_modified, CURRVAL('std_data.users_billing_history_ubh_id_seq'),
+                    :bi.bi_incentive_id, :bi.bi_amount)
+                ]]>
+            </value>
+        </property>
+        <!-- It will take care matching between object property and SQL name parameter -->
+        <property name="itemSqlParameterSourceProvider">
+            <bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider" />
+        </property>
+    </bean>
+
+
+    <bean id="insertRefundReasonWriter" class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+        <property name="dataSource" ref="dataSourcePostgres" />
+        <property name="sql">
+            <value>
+                <!-- getting from sequence :bi.bi_id -->
+                <![CDATA[
+                INSERT INTO std_data.refund_reason( rre_id, rre_created, rre_last_modified, rre_ubh_id, rre_reason_id, rre_process_violation, rre_tool_user_id, rre_violation_explanation)
+                VALUES ( NEXTVAL('std_data.refund_reason_rre_id_seq'), :rr.rre_created, :rr.rre_last_modified, CURRVAL('std_data.users_billing_history_ubh_id_seq'),
+                    :rr.rre_reason_id, :rr.rre_process_violation, :rr.rre_tool_user_id, :rr.rre_violation_explanation)
+                ]]>
+            </value>
+        </property>
+        <!-- It will take care matching between object property and SQL name parameter -->
+        <property name="itemSqlParameterSourceProvider">
+            <bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider" />
+        </property>
+    </bean>
+
+
+</beans>

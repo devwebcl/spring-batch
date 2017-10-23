@@ -1,0 +1,3 @@
+		           <![CDATA[        
+		           	SELECT date, brand_id, status, type2 FROM deal_dummy
+		           ]]>  

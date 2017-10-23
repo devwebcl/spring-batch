@@ -1,0 +1,432 @@
+<beans xmlns="http://www.springframework.org/schema/beans"
+       xmlns:batch="http://www.springframework.org/schema/batch"
+       xmlns:util="http://www.springframework.org/schema/util"
+       xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+       xsi:schemaLocation="http://www.springframework.org/schema/batch
+		http://www.springframework.org/schema/batch/spring-batch.xsd
+		http://www.springframework.org/schema/beans
+		http://www.springframework.org/schema/beans/spring-beans.xsd">
+
+    <!-- these could be at command-line job runner class (AppMigration.java) -->
+    <import resource="../config/context.xml"/>
+    <import resource="../config/database.xml"/>
+
+    <batch:job id="userJob">
+        <batch:step id="step0">
+            <batch:tasklet>
+                <batch:chunk reader="followersReader" processor="followerToUserDecoratorProcessor" writer="userWriterClassifier"
+                             commit-interval="1" skip-limit="2147483647">
+                    <batch:skippable-exception-classes>
+                        <batch:include class="org.springframework.dao.DuplicateKeyException"/>
+                        <batch:include
+                                class="org.springframework.dao.DataIntegrityViolationException"/>
+                    </batch:skippable-exception-classes>
+                </batch:chunk>
+            </batch:tasklet>
+            <batch:listeners>
+                <batch:listener ref="exitStatusListener"/>
+                <batch:listener ref="skipListener"/>
+            </batch:listeners>
+        </batch:step>
+
+        <!--
+        <batch:step id="step1" next="step2">
+            <batch:tasklet>
+                <batch:chunk reader="userReader" processor="userDecoratorProcessor" writer="compositeUserWriter"
+                             commit-interval="1" skip-limit="2147483647">
+                    <batch:skippable-exception-classes>
+                        <batch:include class="org.springframework.dao.DuplicateKeyException"/>
+                        <batch:include
+                                class="org.springframework.dao.DataIntegrityViolationException"/>
+                    </batch:skippable-exception-classes>
+                </batch:chunk>
+            </batch:tasklet>
+            <batch:listeners>
+                <batch:listener ref="exitStatusListener"/>
+                <batch:listener ref="skipListener"/>
+            </batch:listeners>
+        </batch:step>
+        <batch:step id="step2" next="step3">
+            <batch:tasklet>
+                <batch:chunk reader="userCityDealReader" processor="userCDToUserPivotProcessor" writer="updateUserPivotWriter"
+                             commit-interval="1" skip-limit="2147483647">
+                    <batch:skippable-exception-classes>
+                        <batch:include class="org.springframework.dao.DuplicateKeyException"/>
+                        <batch:include
+                                class="org.springframework.dao.DataIntegrityViolationException"/>
+                        <batch:include
+                                class="org.springframework.dao.EmptyResultDataAccessException"/>
+                    </batch:skippable-exception-classes>
+                </batch:chunk>
+            </batch:tasklet>
+            <batch:listeners>
+                <batch:listener ref="exitStatusListener"/>
+                <batch:listener ref="skipListener"/>
+            </batch:listeners>
+        </batch:step>
+        <batch:step id="step3">
+            <batch:tasklet>
+                <batch:chunk reader="userAddressesReader" processor="userAddressToUserAddressCDProcessor" writer="cdUserAddressWriter"
+                             commit-interval="1" skip-limit="2147483647">
+                    <batch:skippable-exception-classes>
+                        <batch:include class="org.springframework.dao.DuplicateKeyException"/>
+                        <batch:include
+                                class="org.springframework.dao.DataIntegrityViolationException"/>
+                        <batch:include
+                                class="org.springframework.dao.EmptyResultDataAccessException"/>
+                    </batch:skippable-exception-classes>
+                </batch:chunk>
+            </batch:tasklet>
+            <batch:listeners>
+                <batch:listener ref="exitStatusListener"/>
+                <batch:listener ref="skipListener"/>
+            </batch:listeners>
+        </batch:step>
+
+        -->
+    </batch:job>
+
+
+    <bean id="exitStatusListener" class="cl.devweb.listener.ModifyExitStatusListener"/>
+    <bean id="skipListener" class="cl.devweb.listener.IncrementalSkipListener"/>
+
+    <!-- Readers -->
+    <bean id="followersReader"
+          class="org.springframework.batch.item.database.JdbcCursorItemReader" scope="step">
+        <property name="dataSource" ref="dataSourceMysql"/>
+        <property name="sql">
+            <value>
+                <![CDATA[
+                    SELECT
+                        follower.email,
+                        follower.created,
+                        cp.n_country_id,
+                        cp.cd_city_id,
+                        cp.id
+                    FROM clandescuento.followers follower
+                    INNER JOIN clandescuento.cities_pivot cp
+                    ON cp.n_location_id = follower.location_id AND cp.n_city_id = follower.city_id
+                    WHERE follower.active = 1
+                    AND cp.n_country_id IN (#{systemProperties.countries})
+                    #{systemProperties.limit}
+                ]]>
+            </value>
+        </property>
+        <property name="rowMapper">
+            <bean class="cl.devweb.mapper.reader.user.FollowerRowMapper"/>
+        </property>
+    </bean>
+
+
+
+    <bean id="userReader"
+          class="org.springframework.batch.item.database.JdbcCursorItemReader" scope="step">
+        <property name="dataSource" ref="dataSourceMysql"/>
+        <property name="sql">
+            <value>
+                <![CDATA[
+                SELECT
+                    user.id,
+                    user.name,
+                    user.active,
+                    user.company_id,
+                    account.username,
+                    account.password,
+                    account.shipping_rut,
+                    consumer.identifier,
+                    city_pivot.n_country_id,
+                    city_pivot.id,
+                    user_pivot.cd_user_id,
+                    user_pivot.uuid
+                FROM clandescuento.accounts account
+                    INNER JOIN clandescuento.users user ON user.id = account.user_id
+                    INNER JOIN clandescuento.cities_pivot city_pivot ON city_pivot.n_city_id = user.city_id AND city_pivot.n_location_id = user.location_id
+                    LEFT OUTER JOIN admindevweb.api_consumers consumer ON consumer.item_id = CAST(user.id AS CHAR)
+                    LEFT OUTER JOIN clandescuento.users_pivot user_pivot ON user_pivot.email = account.username
+                WHERE
+                    city_pivot.n_country_id IN (#{systemProperties.countries})
+                #{systemProperties.limit}
+                ]]>
+            </value>
+        </property>
+        <property name="rowMapper">
+            <bean class="cl.devweb.mapper.reader.user.AccountRowMapper"/>
+        </property>
+    </bean>
+
+    <bean id="userCityDealReader"
+          class="org.springframework.batch.item.database.JdbcCursorItemReader" scope="step">
+        <property name="dataSource" ref="dataSourcePostgres"/>
+        <property name="sql">
+            <value>
+                <![CDATA[
+                    SELECT
+                        u.u_id,
+                        u.u_uuid
+                    FROM std_data.users u
+                    WHERE u.u_appdomain_id IN (#{systemProperties.appDomains})
+                ]]>
+            </value>
+        </property>
+        <property name="rowMapper">
+            <bean class="cl.devweb.mapper.reader.user.UserCDRowMapper"/>
+        </property>
+    </bean>
+
+    <bean id="userAddressesReader"
+          class="org.springframework.batch.item.database.JdbcCursorItemReader" scope="step">
+        <property name="dataSource" ref="dataSourceMysql"/>
+        <property name="sql">
+            <value>
+                <![CDATA[
+                    SELECT
+                        up.cd_user_id,
+                        ua.recipient_name,
+                        ua.street_name,
+                        ua.street_number,
+                        cp.n_name,
+                        ua.zip_code,
+                        cp.n_country_id,
+                        ua.phone_number,
+                        ua.recipient_id,
+                        ua.residence_number,
+                        ua.reference
+                    FROM clandescuento.users_pivot up
+                    INNER JOIN clandescuento.user_addresses ua
+                    ON up.n_user_id = ua.user_id
+                    INNER JOIN clandescuento.cities_pivot cp
+                    ON up.city_pivot_id = cp.id
+                    WHERE up.n_country_id IN (#{systemProperties.countries})
+                ]]>
+            </value>
+        </property>
+        <property name="rowMapper">
+            <bean class="cl.devweb.mapper.reader.user.UserAddressRowMapper"/>
+        </property>
+    </bean>
+
+    <!-- Processors -->
+
+    <bean id="followerToUserDecoratorProcessor" class="cl.devweb.processor.user.FollowerToUserDecoratorProcessor"/>
+
+    <bean id="userCDToUserPivotProcessor" class="cl.devweb.processor.user.UserCDToUserPivotProcessor"/>
+
+    <bean id="userAddressToUserAddressCDProcessor" class="cl.devweb.processor.user.UserAddressToUserAddressCDProcessor"/>
+
+    <!-- Writers -->
+    <bean id="compositeUserWriter222" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="insertUserWriter"/>
+                <ref bean="insertUserPivotWriter"/>
+            </list>
+        </property>
+    </bean>
+
+    <bean id="insertUserWriter" class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+        <property name="dataSource" ref="dataSourcePostgres"/>
+        <property name="sql">
+            <value>
+
+                <![CDATA[
+                    INSERT INTO std_data.users(
+                        u_appdomain_id,
+                        u_state_id,
+                        u_first_name,
+                        u_last_name,
+                        u_email,
+                        u_password,
+                        u_personal_identifier,
+                        u_recurring,
+                        u_ut_id,
+                        u_encryption_method,
+                        u_uuid
+                    )
+                    VALUES (
+                        :userCD.u_appdomain_id,
+                        :userCD.u_state_id,
+                        :userCD.u_first_name,
+                        :userCD.u_last_name,
+                        :userCD.u_email,
+                        :userCD.u_password,
+                        :userCD.u_personal_identifier,
+                        true,
+                        0,
+                        'SHA1',
+                        :userCD.u_uuid
+                    )
+               ]]>
+
+            </value>
+        </property>
+        <property name="itemSqlParameterSourceProvider">
+            <bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider"/>
+        </property>
+    </bean>
+
+    <!-- Writers to users pivot devwebish -->
+
+    <bean id="userWriterClassifier" class="org.springframework.batch.item.support.ClassifierCompositeItemWriter">
+        <property name="classifier">
+            <bean class="org.springframework.classify.BackToBackPatternClassifier">
+                <property name="routerDelegate">
+                    <bean class="cl.devweb.classifier.WriterRouterClassifierUser" />
+                </property>
+                <property name="matcherMap">
+                    <map>
+                        <entry key="insertNewsletterCityDealUser" value-ref="compositeNewsletterAndUserWriter" />
+                        <entry key="insertUsersPivotCityDealUser" value-ref="compositeUserWriter" />
+                        <entry key="updateUsersPivotCityDealUser" value-ref="dummyWriter3" />
+                    </map>
+                </property>
+            </bean>
+        </property>
+    </bean>
+
+    <bean id="insertUserPivotWriter" class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+        <property name="dataSource" ref="dataSourceMysql"/>
+        <property name="sql">
+            <value>
+                <![CDATA[
+                    INSERT INTO clandescuento.users_pivot(
+                        n_user_id,
+                        n_country_id,
+                        email,
+                        uuid,
+                        n_company_id,
+                        cd_appdomain_id,
+                        city_pivot_id,
+                        is_user_created
+                    )
+                    VALUES (
+                        :userPivot.nUserId,
+                        :userPivot.cdUserId,
+                        :userPivot.cityPivot.n_country_id,
+                        :userPivot.email,
+                        :userPivot.uuid,
+                        :userPivot.nCompanyId,
+                        :userPivot.cityPivot.cd_appdomain_id,
+                        :userPivot.cityPivot.id,
+                        :userPivot.isUserCreated
+                    )
+               ]]>
+            </value>
+        </property>
+        <property name="itemSqlParameterSourceProvider">
+            <bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider"/>
+        </property>
+    </bean>
+
+    <bean id="updateUserPivotWriter" class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+        <property name="dataSource" ref="dataSourceMysql"/>
+        <property name="sql">
+            <value>
+                <![CDATA[
+                    UPDATE clandescuento.users_pivot
+                    SET cd_user_id = :cdUserId
+                    WHERE cd_user_id IS NULL AND uuid = :uuid
+                ]]>
+            </value>
+        </property>
+        <property name="itemSqlParameterSourceProvider">
+            <bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider"/>
+        </property>
+    </bean>
+
+    <bean id="cdUserAddressWriter" class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+        <property name="dataSource" ref="dataSourcePostgres"/>
+        <property name="sql">
+            <value>
+                <![CDATA[
+                    INSERT INTO std_data.user_address(
+                        ua_u_id,
+                        ua_first_name,
+                        ua_last_name,
+                        ua_street,
+                        ua_street_number,
+                        ua_city,
+                        ua_postal_code,
+                        ua_country,
+                        ua_phone_number,
+                        ua_personal_identification_number,
+                        ua_additional_information,
+                        ua_status,
+                        ua_uuid
+                    )
+                    VALUES (
+                        :ua_u_id,
+                        :ua_first_name,
+                        :ua_last_name,
+                        :ua_street,
+                        :ua_street_number,
+                        :ua_city,
+                        :ua_postal_code,
+                        :ua_country,
+                        :ua_phone_number,
+                        :ua_personal_identification_number,
+                        :ua_additional_information,
+                        'DEFAULT',
+                        :ua_uuid
+                    )
+                ]]>
+            </value>
+        </property>
+        <property name="itemSqlParameterSourceProvider">
+            <bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider"/>
+        </property>
+    </bean>
+
+    <bean id="insertFollowerWriter" class="org.springframework.batch.item.database.JdbcBatchItemWriter">
+        <property name="dataSource" ref="dataSourcePostgres"/>
+        <property name="sql">
+            <value>
+
+                <![CDATA[
+                    INSERT INTO std_data.newsletter_city_deals_registered(
+                        ncdr_city_id,
+                        ncdr_user_id,
+                        ncdr_status,
+                        ncdr_stats_counter,
+                        ncdr_registration_origin,
+                        ncdr_created
+                    )
+                    VALUES (
+                        :userPivot.cityPivot.cd_city_id,
+                        :userCD.u_id,
+                        0,
+                        0,
+                        'latam-migration'
+                        :userCD.created
+                    )
+               ]]>
+
+            </value>
+        </property>
+        <property name="itemSqlParameterSourceProvider">
+            <bean class="org.springframework.batch.item.database.BeanPropertyItemSqlParameterSourceProvider"/>
+        </property>
+    </bean>
+
+    <bean id="compositeNewsletterAndUserWriter" scope="step" class="org.springframework.batch.item.support.CompositeItemWriter">
+        <property name="delegates">
+            <list>
+                <ref bean="cdUserWriter"/>
+                <ref bean="insertFollowerWriter"/>
+                <ref bean="usersPivotWriter" />
+            </list>
+        </property>
+    </bean>
+
+
+    <bean id="cdUserWriter" class="cl.devweb.writer.users.UsersCDWriter">
+        <property name="dataSource" ref="dataSourcePostgres"/>
+        <property name="cacheBean" ref="commonCacheBean" />
+    </bean>
+
+    <bean id="usersPivotWriter" class="cl.devweb.writer.users.UsersPivotWriter">
+        <property name="dataSource" ref="dataSourceMysql"/>
+        <property name="cacheBean" ref="commonCacheBean" />
+    </bean>
+
+
+</beans>
